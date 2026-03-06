@@ -94,21 +94,20 @@ function generateLayout() {
   rowHeights = [];
 
   let totalW = 0;
-  while (totalW < CANVAS_W) {
+  while (totalW < width) {
     let w = random(COL_SIZE_OPTIONS);
-    if (totalW + w > CANVAS_W) w = CANVAS_W - totalW;
+    if (totalW + w > width) w = width - totalW;  // ← was CANVAS_W
     colWidths.push(w);
     totalW += w;
   }
 
   let totalH = 0;
-  while (totalH < CANVAS_H) {
+  while (totalH < height) {
     let h = random(ROW_SIZE_OPTIONS);
-    if (totalH + h > CANVAS_H) h = CANVAS_H - totalH;
+    if (totalH + h > height) h = height - totalH;  // ← was CANVAS_H
     rowHeights.push(h);
     totalH += h;
   }
-
   COLS = colWidths.length;
   ROWS = rowHeights.length;
 }
@@ -176,7 +175,7 @@ function localProgress(globalT, delay) {
 }
 
 function setup() {
-  createCanvas(CANVAS_W, CANVAS_H);
+  createCanvas(windowWidth, windowHeight);
   frameRate(60);
   layoutChangeEvery = floor(random(4, 7));
   generateLayout();
@@ -269,16 +268,22 @@ function draw() {
     strokeWeight(0.5);
     let x = 0;
     for (let c = 0; c <= COLS; c++) {
-      line(x, 0, x, CANVAS_H);
+      line(x, 0, x, height);
       if (c < COLS) x += colWidths[c];
     }
     let y = 0;
     for (let r = 0; r <= ROWS; r++) {
-      line(0, y, CANVAS_W, y);
+      line(0, y, width, y);
       if (r < ROWS) y += rowHeights[r];
     }
   }
   //blendMode(BLEND);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  generateLayout();
+  generateRegions();
 }
 
 function mousePressed() {
