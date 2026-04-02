@@ -19,8 +19,8 @@ let layoutCycleCount  = 0;
 let layoutChangeEvery = 1;
 
 // ── timing ──
-const ANIM_DURATION = 150;  // frames to animate in (and out)
-const REST_FRAMES   = 60;   // frames held at full before crossfade starts
+const ANIM_DURATION = 200;  // frames to animate in (and out)
+const REST_FRAMES   = 80;   // frames held at full before crossfade starts
 const MAX_DELAY     = 0.5;
 
 let restCounter = 0;
