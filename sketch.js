@@ -275,8 +275,8 @@ pop();
 // ── p5 lifecycle ──
 
 function setup() {
-  //createCanvas(windowWidth, windowHeight);
-    createCanvas(720, 540);
+  createCanvas(windowWidth, windowHeight);
+    //createCanvas(720, 540);
   
   let canvas = document.querySelector('canvas');
  // canvas.style.width = '720px';
