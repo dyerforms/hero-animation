@@ -1,39 +1,39 @@
 // Grid Fill Study — Neon Grammar (looping)
-// Auto-regenerates continuously. Click to pause/resume. G to toggle grid. S to save.
+// Auto-regenerates with crossfade. Click to pause/resume. G to toggle grid. S to save.
 
-let regions   = [];
-let showGrid  = true;
-let t         = 0;
-let paused    = false;
+// Each "deck" bundles regions with the layout they were built against,
+// so outgoing and incoming never share a colWidths/rowHeights array.
 
+let current = { regions: [], colWidths: [], rowHeights: [], COLS: 0, ROWS: 0 };
+let next    = { regions: [], colWidths: [], rowHeights: [], COLS: 0, ROWS: 0 };
 
+let tCurr         = 0;
+let tNext         = 0;
+let transitioning = false;
 
-// ── layout state ──
-let colWidths        = [];
-let rowHeights       = [];
-let layoutCycleCount = 0;
-let layoutChangeEvery;
+let showGrid = true;
+let paused   = false;
 
-let img;
+// ── layout cycle ──
+let layoutCycleCount  = 0;
+let layoutChangeEvery = 1;
 
-const ANIM_DURATION = 110;
-const REST_FRAMES   = 40;
+// ── timing ──
+const ANIM_DURATION = 150;  // frames to animate in (and out)
+const REST_FRAMES   = 60;   // frames held at full before crossfade starts
 const MAX_DELAY     = 0.5;
 
 let restCounter = 0;
 let resting     = false;
 
+// ── palette ──
 let color1 = "#ed1c24";
 let color2 = "#ef23aa";
 let color3 = "#0200E9";
 let color4 = "#F6F3EB";
 let color5 = "#0C0B14";
 
-let COLS, ROWS;
-
-const CANVAS_W = 900;
-const CANVAS_H = 700;
-
+// ── cell types ──
 const EMPTY   = 0;
 const SOLID   = 1;
 const H_LINES = 2;
@@ -41,15 +41,19 @@ const V_LINES = 3;
 
 const MARGIN        = 0;
 const LINE_SPACINGS = [5, 10];
-const WEIGHTS       = [28, 12, 30, 30];
+const WEIGHTS       = [10, 25, 30, 35];
 
-const COL_SIZE_OPTIONS = [5, 10, 25, 50, 75, 100, 150, 180];
-const ROW_SIZE_OPTIONS = [7, 14, 35, 50, 70, 100, 140, 175];
+const COL_SIZE_OPTIONS = [10, 15, 75, 150, 300, 450];
+const ROW_SIZE_OPTIONS = [14, 20, 100, 175, 350];
 
 
-
+// ── math helpers ──
 function easeInOut(v) {
   return v < 0.5 ? 2 * v * v : -1 + (4 - 2 * v) * v;
+}
+
+function easeIn(v) {
+  return v * v;
 }
 
 function weightedRandom(weights) {
@@ -66,7 +70,7 @@ function weightedRandom(weights) {
 function weightedSpan(max) {
   if (max === 1) return 1;
   let weights = [];
-  for (let i = 1; i <= max; i++) weights.push(pow(0.45, i - 1));
+  for (let i = 1; i <= max; i++) weights.push(pow(0.65, i - 1));
   let total = weights.reduce((a, b) => a + b, 0);
   let r = random(total);
   let sum = 0;
@@ -77,51 +81,59 @@ function weightedSpan(max) {
   return max;
 }
 
-function colX(ci) {
+// position helpers use the deck's own layout arrays
+function deckColX(deck, ci) {
   let x = 0;
-  for (let i = 0; i < ci; i++) x += colWidths[i];
+  for (let i = 0; i < ci; i++) x += deck.colWidths[i];
   return x;
 }
 
-function rowY(ri) {
+function deckRowY(deck, ri) {
   let y = 0;
-  for (let i = 0; i < ri; i++) y += rowHeights[i];
+  for (let i = 0; i < ri; i++) y += deck.rowHeights[i];
   return y;
 }
 
-function generateLayout() {
-  colWidths  = [];
-  rowHeights = [];
+
+// ── layout + region building ──
+
+function makeLayout() {
+  let cw = [], rh = [];
 
   let totalW = 0;
   while (totalW < width) {
     let w = random(COL_SIZE_OPTIONS);
-    if (totalW + w > width) w = width - totalW;  // ← was CANVAS_W
-    colWidths.push(w);
+    if (totalW + w > width) w = width - totalW;
+    cw.push(w);
     totalW += w;
   }
 
   let totalH = 0;
   while (totalH < height) {
     let h = random(ROW_SIZE_OPTIONS);
-    if (totalH + h > height) h = height - totalH;  // ← was CANVAS_H
-    rowHeights.push(h);
+    if (totalH + h > height) h = height - totalH;
+    rh.push(h);
     totalH += h;
   }
-  COLS = colWidths.length;
-  ROWS = rowHeights.length;
+
+  return { colWidths: cw, rowHeights: rh, COLS: cw.length, ROWS: rh.length };
 }
 
-function generateRegions() {
+// returns a complete self-contained deck: layout + regions
+function buildDeck() {
   layoutCycleCount++;
   if (layoutCycleCount >= layoutChangeEvery) {
-    generateLayout();
-    layoutCycleCount = 0;
-    layoutChangeEvery = floor(random(2, 4));
+    layoutCycleCount  = 0;
+    layoutChangeEvery = floor(random(1, 3));
   }
 
-  regions = [];
+  let layout   = makeLayout();
+  let cw       = layout.colWidths;
+  let rh       = layout.rowHeights;
+  let COLS     = layout.COLS;
+  let ROWS     = layout.ROWS;
   let myColors = [color1, color4];
+  let result   = [];
 
   let claimed = [];
   for (let ri = 0; ri < ROWS; ri++) {
@@ -144,10 +156,8 @@ function generateRegions() {
         maxRows++;
       }
 
-      //let spanC    = weightedSpan(maxCols);
-      //let spanR    = weightedSpan(maxRows);
-      let spanC = 1;
-let spanR = 1;
+      let spanC    = weightedSpan(maxCols);
+      let spanR    = weightedSpan(maxRows);
       let type     = weightedRandom(WEIGHTS);
       let spacing  = random(LINE_SPACINGS);
       let weight   = random([0.75, 1, 1.5, 2, 3]);
@@ -157,7 +167,7 @@ let spanR = 1;
       let posNorm = (ri / ROWS * 0.6) + (ci / COLS * 0.4);
       let delay   = constrain(posNorm * MAX_DELAY + random(-0.05, 0.05), 0, MAX_DELAY);
 
-      regions.push({
+      result.push({
         gridCol: ci, gridRow: ri, spanC, spanR,
         type, spacing, weight, regColor, fromEdge, delay
       });
@@ -167,56 +177,39 @@ let spanR = 1;
           claimed[ri + dr][ci + dc] = true;
     }
   }
+
+	// at the end of buildDeck(), before the return
+return { 
+  regions: result, colWidths: cw, rowHeights: rh, COLS, ROWS,
+  gridColor: random([color4])  // picked once, stable
+};
+
+  return { regions: result, colWidths: cw, rowHeights: rh, COLS, ROWS };
 }
+
+
+// ── drawing ──
 
 function localProgress(globalT, delay) {
   if (globalT <= delay) return 0;
   return constrain((globalT - delay) / (1.0 - delay), 0, 1);
 }
 
-function setup() {
-  createCanvas(windowWidth, windowHeight);
-  frameRate(60);
-  layoutChangeEvery = floor(random(4, 7));
-  generateLayout();
-  layoutCycleCount = 0;
-  generateRegions();
-  t = 0;
-  resting = false;
-  restCounter = 0;
-}
+function drawDeck(deck, globalT, isOutgoing){
+  for (let reg of deck.regions) {
+    let x = deckColX(deck, reg.gridCol);
+    let y = deckRowY(deck, reg.gridRow);
 
-function draw() {
-  if (!paused) {
-    if (resting) {
-      restCounter++;
-      if (restCounter >= REST_FRAMES) {
-        generateRegions();
-        t = 0;
-        resting = false;
-        restCounter = 0;
-      }
-    } else {
-      t += 1 / ANIM_DURATION;
-      if (t >= 1) {
-        t = 1;
-        resting = true;
-        restCounter = 0;
-      }
-    }
-  }
 
-  background(color5);
 
-  for (let reg of regions) {
-    let x = colX(reg.gridCol);
-    let y = rowY(reg.gridRow);
+
     let w = 0;
-    for (let dc = 0; dc < reg.spanC; dc++) w += colWidths[reg.gridCol + dc];
+    for (let dc = 0; dc < reg.spanC; dc++) w += deck.colWidths[reg.gridCol + dc];
     let h = 0;
-    for (let dr = 0; dr < reg.spanR; dr++) h += rowHeights[reg.gridRow + dr];
+    for (let dr = 0; dr < reg.spanR; dr++) h += deck.rowHeights[reg.gridRow + dr];
 
-    let et = easeInOut(localProgress(t, reg.delay));
+    let progress = localProgress(globalT, reg.delay);
+	 let et = isOutgoing ? easeIn(progress) : easeInOut(progress);
     let ix = x + MARGIN;
     let iy = y + MARGIN;
     let iw = w - MARGIN * 2;
@@ -225,7 +218,6 @@ function draw() {
     noStroke();
 
     if (reg.type === SOLID) {
-      //blendMode(EXCLUSION);
       fill(reg.regColor);
       if (reg.fromEdge === 'start') {
         rect(ix, iy, iw, ih * et);
@@ -234,7 +226,6 @@ function draw() {
       }
 
     } else if (reg.type === H_LINES) {
-      //blendMode(EXCLUSION);
       stroke(reg.regColor);
       strokeWeight(reg.weight);
       let originY   = reg.fromEdge === 'start' ? iy : iy + ih;
@@ -247,7 +238,6 @@ function draw() {
       }
 
     } else if (reg.type === V_LINES) {
-     //blendMode(EXCLUSION);
       stroke(reg.regColor);
       strokeWeight(reg.weight);
       let originX   = reg.fromEdge === 'start' ? ix : ix + iw;
@@ -260,45 +250,112 @@ function draw() {
       }
     }
   }
-  //blendMode(BLEND);
-
-  if (showGrid) {
-    //blendMode(EXCLUSION);
-    stroke(color4);
-    strokeWeight(0.5);
-    let x = 0;
-    for (let c = 0; c <= COLS; c++) {
-      line(x, 0, x, height);
-      if (c < COLS) x += colWidths[c];
-    }
-    let y = 0;
-    for (let r = 0; r <= ROWS; r++) {
-      line(0, y, width, y);
-      if (r < ROWS) y += rowHeights[r];
-    }
-  }
-  //blendMode(BLEND);
 }
 
+function drawGrid(deck) {
+    if (!showGrid) return;
+  push();
+  stroke(deck.gridColor);  // stable per deck
+  strokeWeight(1.5);
+  let x = 0;
+  for (let c = 0; c <= deck.COLS; c++) {
+    line(x, 0, x, height);
+    if (c < deck.COLS) x += deck.colWidths[c];
+  }
+  let y = 0;
+  for (let r = 0; r <= deck.ROWS; r++) {
+    line(0, y, width, y);
+    if (r < deck.ROWS) y += deck.rowHeights[r];
+  }
+pop();
+}
+
+
+
+// ── p5 lifecycle ──
+
+function setup() {
+  //createCanvas(windowWidth, windowHeight);
+    createCanvas(720, 540);
+  
+  let canvas = document.querySelector('canvas');
+ // canvas.style.width = '720px';
+  //canvas.style.height = '540px';
+  
+  frameRate(60);
+  current       = buildDeck();
+  tCurr         = 0;
+  transitioning = false;
+  resting       = false;
+  restCounter   = 0;
+}
+
+function draw() {
+
+
+  if (!paused) {
+    if (transitioning) {
+      tCurr -= 1.5 / ANIM_DURATION;  // outgoing retracts
+      tNext += 1 / ANIM_DURATION;  // incoming grows
+      if (tCurr <= 0) {
+        // swap — incoming becomes current
+        current       = next;
+        next          = {};
+        tCurr         = tNext;
+        transitioning = false;
+        resting       = false;
+        restCounter   = 0;
+      }
+    } else if (resting) {
+      restCounter++;
+      if (restCounter >= REST_FRAMES) {
+        next          = buildDeck();
+        tNext         = 0;
+        transitioning = true;
+      }
+    } else {
+      tCurr += 1 / ANIM_DURATION;
+      if (tCurr >= 1) {
+        tCurr       = 1;
+        resting     = true;
+        restCounter = 0;
+      }
+    }
+  }
+
+background(color5);
+
+if (transitioning) drawingContext.globalAlpha = tCurr; // fade as it retracts
+drawDeck(current, tCurr, transitioning);
+drawingContext.globalAlpha = 1.0; // always reset before drawing incoming
+
+drawGrid(transitioning ? next : current);
+if (transitioning) drawDeck(next, tNext, false);
+}
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  generateLayout();
-  generateRegions();
+  current       = buildDeck();
+  tCurr         = 0;
+  transitioning = false;
+  resting       = false;
+  restCounter   = 0;
 }
 
-function mousePressed() {
-  paused = !paused;
-}
+//function mousePressed() {
+ // paused = !paused;
+//}
 
 function keyPressed() {
-  if (key === 'g' || key === 'G') {
+  if (key === 'g' || key === 'G') showGrid = !showGrid;
+  if (key === 'r' || key === 'R') saveGif('moving-grid', 4);
+  if (key === 's' || key === 'S')  {
     showGrid = !showGrid;
   }
-  if ((key === 's' || key === 'S') && paused) {
+  if ((key === 's' || key === 'S')) {
     let gridWasOn = showGrid;
     showGrid = false;
     redraw();
-    saveCanvas('neon-grammar-grid', 'png');
+    saveCanvas('moving-grid', 'png');
     showGrid = gridWasOn;
   }
 }
